@@ -1,6 +1,7 @@
 const userModel = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const redis = require("../config/cache");
 
 async function registerController(req, res) {
   const { username, email, password } = req.body;
@@ -47,12 +48,14 @@ async function registerController(req, res) {
 async function loginController(req, res) {
   const { username, email, password } = req.body;
 
-  const user = await userModel.findOne({
-    $or: [{ email }, { username }],
-  });
+  const user = await userModel
+    .findOne({
+      $or: [{ email }, { username }],
+    })
+    .select("+password");
 
   if (!user) {
-    return res.status(401).json({
+    return res.status(400).json({
       msg: "Invalid Credentials",
     });
   }
@@ -60,7 +63,7 @@ async function loginController(req, res) {
   const isPasswordValid = await bcrypt.compare(password, user.password);
 
   if (!isPasswordValid) {
-    return res.status(401).json({
+    return res.status(400).json({
       msg: "Invalid Credentaisl",
     });
   }
@@ -86,7 +89,39 @@ async function loginController(req, res) {
   });
 }
 
+async function getMeController(req, res) {
+  const userId = req.user.id;
+  // console.log(userId);
+
+  const user = await userModel.findById({ _id: userId });
+
+  if (!user) {
+    return res.status(401).json({
+      msg: "User is not authorized",
+    });
+  }
+
+  res.status(200).json({
+    msg: "User fetched Successfully",
+    user,
+  });
+}
+
+async function logOutController(req, res) {
+  const token = req.cookies.token;
+
+  res.clearCookie("token");
+
+  await redis.set(token, Date.now().toString(), "EX", 60 * 60);
+
+  res.status(200).json({
+    message: "logout successfully.",
+  });
+}
+
 module.exports = {
   registerController,
   loginController,
+  getMeController,
+  logOutController,
 };
